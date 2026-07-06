@@ -126,15 +126,22 @@ end
 
 --============================================================
 --  FEATURE: AUTO CLAIM COINS  (works for ALL placed pets)
---  Mechanic: pets accumulate a "Coin" attribute. The server only
---  lets you collect via the pet's ProximityPrompt AND validates
---  your character distance server-side, so we must be near the pet.
---  We snapshot the character CFrame, quickly "flick" to each pet
---  (position-only), enable + fire its prompt, then instantly
---  restore — so from the player's view you stay in one spot.
+--  Mechanic: every owned pet produces coins collected via its
+--  ProximityPrompt. The server validates your character distance
+--  server-side, so we must be near the pet. We snapshot the
+--  character CFrame, quickly "flick" to each pet (position-only),
+--  enable + fire its prompt, then instantly restore — so from the
+--  player's view you stay in one spot.
+--  IMPORTANT: only BIG pets expose pending coins in the "Coin"
+--  attribute. Small/garden pets ALWAYS report Coin=0 yet still hold
+--  claimable coins (confirmed: firing a small pet's prompt gained
+--  ~88M with Coin reading 0). So we must claim EVERY owned pet that
+--  has a prompt — never gate on Coin>0, or small pets are skipped.
 --  Fixes vs old version:
+--    * claims every owned pet (dropped the Coin>0 filter) so small
+--      garden pets are collected, not just big pets
 --    * uses pet.Position (not pet.CFrame) so rotation never throws
---      the character off the grid — small garden pets now claim
+--      the character off the grid
 --    * force-enables the prompt (garden prompts are disabled until
 --      someone is close) before firing
 --    * does NOT anchor the HRP — anchoring makes the server reject
@@ -150,10 +157,11 @@ local function claimAllCoins()
 		if not hrp or not petsFolder then return end
 		local myId = LocalPlayer.UserId
 
-		-- collect claimable pets first
+		-- collect every owned pet that has a prompt (small pets report
+		-- Coin=0 but still hold coins, so we do NOT filter on Coin)
 		local targets = {}
 		for _, pet in ipairs(petsFolder:GetChildren()) do
-			if pet:GetAttribute("UserId") == myId and (pet:GetAttribute("Coin") or 0) > 0 then
+			if pet:GetAttribute("UserId") == myId then
 				local prompt
 				for _, d in ipairs(pet:GetDescendants()) do
 					if d:IsA("ProximityPrompt") then prompt = d break end
@@ -166,7 +174,7 @@ local function claimAllCoins()
 		local origin = hrp.CFrame
 		for _, t in ipairs(targets) do
 			if not State.AutoClaimCoins then break end
-			if t.pet.Parent and (t.pet:GetAttribute("Coin") or 0) > 0 then
+			if t.pet.Parent then
 				hrp.CFrame = CFrame.new(t.pet.Position + Vector3.new(0, 3, 0))
 				task.wait(0.08)
 				pcall(function() t.prompt.Enabled = true end)
